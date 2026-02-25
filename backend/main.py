@@ -1,0 +1,133 @@
+from fastapi import FastAPI
+from pydantic import BaseModel
+from catboost import CatBoostClassifier
+import pandas as pd
+from backend.scraper import get_affordable_alternatives
+import shap
+
+app = FastAPI()
+
+# -------- LOAD MODEL ONLY --------
+model = CatBoostClassifier()
+model.load_model("models/catboost_purchase_model.cbm")
+
+
+class PurchaseRequest(BaseModel):
+    Monthly_Income: float
+    Monthly_Budget: float
+    Monthly_Expenditure: float
+    Purchase_Amount: float
+    Expense_Category: str
+    Purchase_Priority: str
+    Original_Priority: int
+    Urgency_Level: str
+    Product_Name: str
+
+
+@app.post("/check-feasibility")
+def check_feasibility(data: PurchaseRequest):
+
+    input_dict = data.dict()
+
+    remaining_budget = (
+        input_dict["Monthly_Budget"]
+        - input_dict["Monthly_Expenditure"]
+        - input_dict["Purchase_Amount"]
+    )
+
+    budget_utilization = (
+        ((input_dict["Monthly_Expenditure"] + input_dict["Purchase_Amount"])
+         / input_dict["Monthly_Budget"]) * 100
+        if input_dict["Monthly_Budget"] > 0 else 0
+    )
+
+    savings_ratio = (
+        (input_dict["Monthly_Income"]
+         - (input_dict["Monthly_Expenditure"] + input_dict["Purchase_Amount"]))
+        / input_dict["Monthly_Income"]
+        if input_dict["Monthly_Income"] > 0 else 0
+    )
+
+    df = pd.DataFrame([{
+        "Monthly_Income": input_dict["Monthly_Income"],
+        "Monthly_Expenditure": input_dict["Monthly_Expenditure"],
+        "Savings_Ratio": savings_ratio,
+        "Debt_to_Income_Ratio": 0.2,
+        "Financial_Stability_Index": savings_ratio,
+        "Investment_Amount": 0,
+        "Credit_Score": 700,
+        "Risk_Tolerance_Level": "Medium",
+        "Expense_Category": input_dict["Expense_Category"],
+        "Purchase_Amount": input_dict["Purchase_Amount"],
+        "Purchase_Priority": input_dict["Purchase_Priority"],
+        "Urgency_Score": 1 if input_dict["Urgency_Level"] == "Very Urgent" else 0.5,
+        "Remaining_Budget": remaining_budget,
+        "Budget_Utilization_Percentage": budget_utilization
+    }])
+
+    prediction = model.predict(df)[0]
+    result = "Feasible" if prediction == 1 else "Not Feasible"
+
+    if remaining_budget < 0:
+        result = "Not Feasible"
+
+    # -------- LAZY SHAP INITIALIZATION --------
+    explainer = shap.TreeExplainer(model)
+    shap_values = explainer.shap_values(df)
+
+    if isinstance(shap_values, list):
+        shap_values = shap_values[1]
+
+    shap_series = pd.Series(shap_values[0], index=df.columns)
+    top_features = shap_series.abs().sort_values(ascending=False).head(3)
+
+    explanation = []
+
+    explanation.append(
+        f"After this purchase, your remaining budget will be approximately ₹{remaining_budget:.2f}."
+    )
+
+    explanation.append(
+        f"Your budget utilization will become {budget_utilization:.1f}%."
+    )
+
+    explanation.append(
+        f"Your savings ratio will adjust to {savings_ratio:.2f}."
+    )
+
+    if input_dict["Urgency_Level"] == "Very Urgent":
+        explanation.append(
+            f"This purchase was marked as Very Urgent, so its priority was temporarily elevated from {input_dict['Original_Priority']} to 1."
+        )
+
+    explanation.append("Key factors influencing this decision:")
+
+    for feature in top_features.index:
+        impact = shap_series[feature]
+
+        if impact > 0:
+            explanation.append(
+                f"- {feature.replace('_', ' ')} positively influenced feasibility."
+            )
+        else:
+            explanation.append(
+                f"- {feature.replace('_', ' ')} negatively influenced feasibility."
+            )
+
+    if remaining_budget < 0:
+        explanation.append(
+            "This purchase would result in a negative remaining budget, which weakens financial stability."
+        )
+
+    recommendations = []
+
+    if result == "Not Feasible":
+        recommendations = get_affordable_alternatives(
+            product_name=input_dict.get("Product_Name", "product")
+        )
+
+    return {
+        "prediction": result,
+        "explanation": explanation,
+        "recommendations": recommendations
+    }
