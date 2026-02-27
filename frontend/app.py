@@ -4,7 +4,7 @@ from utils.auth import register_user, login_user, reset_password
 
 create_tables()
 
-st.set_page_config(page_title="AI Budget Advisor", layout="centered")
+st.set_page_config(page_title="Predictive Financial System", layout="centered")
 
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False

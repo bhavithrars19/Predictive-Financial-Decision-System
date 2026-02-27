@@ -37,7 +37,7 @@ else:
 # -------- MONTHLY FINANCIAL INPUTS --------
 income = st.number_input("Monthly Income (₹)", value=float(income_default))
 budget = st.number_input("Monthly Budget (₹)", value=float(budget_default))
-expected_expenditure = st.number_input("Expected Monthly Expenditure (₹)", value=float(exp_default))
+expected_expenditure = st.number_input("Monthly Expenditure (₹)", value=float(exp_default))
 
 st.divider()
 

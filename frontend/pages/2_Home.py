@@ -1,7 +1,6 @@
 import streamlit as st
 from datetime import date, timedelta
 from utils.db import get_connection
-from utils.powerbi_export import export_powerbi_data
 
 st.set_page_config(page_title="Home Dashboard")
 
@@ -120,21 +119,3 @@ st.divider()
 # -------- LOG EXPENSE BUTTON --------
 if st.button("➕ Log Today's Expense"):
     st.switch_page("pages/Log_Daily_Expense.py")
-
-st.divider()
-
-# -------- POWER BI EXPORT --------
-st.subheader("📤 Power BI Integration")
-
-if st.button("Export Updated Data for Power BI"):
-    success = export_powerbi_data()
-
-    if success:
-        st.success("Data exported successfully for Power BI.")
-    else:
-        st.warning("No expense data available to export.")
-
-st.info(
-    "Power BI acts only as a visualization layer. "
-    "All ML, forecasting, and decision logic runs in the backend."
-)

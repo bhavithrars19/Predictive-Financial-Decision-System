@@ -2,16 +2,16 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 from catboost import CatBoostClassifier
 import pandas as pd
-from backend.scraper import get_affordable_alternatives
 import shap
 
 app = FastAPI()
 
-# -------- LOAD MODEL ONLY --------
+# -------- LOAD TRAINED MODEL --------
 model = CatBoostClassifier()
 model.load_model("models/catboost_purchase_model.cbm")
 
 
+# -------- REQUEST SCHEMA --------
 class PurchaseRequest(BaseModel):
     Monthly_Income: float
     Monthly_Budget: float
@@ -24,11 +24,13 @@ class PurchaseRequest(BaseModel):
     Product_Name: str
 
 
+# -------- FEASIBILITY CHECK ROUTE --------
 @app.post("/check-feasibility")
 def check_feasibility(data: PurchaseRequest):
 
     input_dict = data.dict()
 
+    # -------- CALCULATIONS --------
     remaining_budget = (
         input_dict["Monthly_Budget"]
         - input_dict["Monthly_Expenditure"]
@@ -48,6 +50,7 @@ def check_feasibility(data: PurchaseRequest):
         if input_dict["Monthly_Income"] > 0 else 0
     )
 
+    # -------- PREPARE MODEL INPUT --------
     df = pd.DataFrame([{
         "Monthly_Income": input_dict["Monthly_Income"],
         "Monthly_Expenditure": input_dict["Monthly_Expenditure"],
@@ -65,21 +68,20 @@ def check_feasibility(data: PurchaseRequest):
         "Budget_Utilization_Percentage": budget_utilization
     }])
 
+    # -------- MODEL PREDICTION --------
     prediction = model.predict(df)[0]
     result = "Feasible" if prediction == 1 else "Not Feasible"
 
+    # Force not feasible if budget goes negative
     if remaining_budget < 0:
         result = "Not Feasible"
 
-    # -------- LAZY SHAP INITIALIZATION --------
+    # -------- SHAP EXPLANATION (SIMPLIFIED DISPLAY) --------
     explainer = shap.TreeExplainer(model)
     shap_values = explainer.shap_values(df)
 
     if isinstance(shap_values, list):
         shap_values = shap_values[1]
-
-    shap_series = pd.Series(shap_values[0], index=df.columns)
-    top_features = shap_series.abs().sort_values(ascending=False).head(3)
 
     explanation = []
 
@@ -100,34 +102,13 @@ def check_feasibility(data: PurchaseRequest):
             f"This purchase was marked as Very Urgent, so its priority was temporarily elevated from {input_dict['Original_Priority']} to 1."
         )
 
-    explanation.append("Key factors influencing this decision:")
-
-    for feature in top_features.index:
-        impact = shap_series[feature]
-
-        if impact > 0:
-            explanation.append(
-                f"- {feature.replace('_', ' ')} positively influenced feasibility."
-            )
-        else:
-            explanation.append(
-                f"- {feature.replace('_', ' ')} negatively influenced feasibility."
-            )
-
     if remaining_budget < 0:
         explanation.append(
             "This purchase would result in a negative remaining budget, which weakens financial stability."
         )
 
-    recommendations = []
-
-    if result == "Not Feasible":
-        recommendations = get_affordable_alternatives(
-            product_name=input_dict.get("Product_Name", "product")
-        )
-
+    # -------- FINAL RESPONSE --------
     return {
         "prediction": result,
-        "explanation": explanation,
-        "recommendations": recommendations
+        "explanation": explanation
     }

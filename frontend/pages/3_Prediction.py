@@ -136,15 +136,6 @@ if st.button("Check Feasibility"):
             for line in result["explanation"]:
                 st.write("•", line)
 
-            if result.get("recommendations"):
-                st.subheader("💡 Affordable Alternatives")
-
-                for item in result["recommendations"]:
-                    st.markdown(f"**{item['title']}**")
-                    st.write(f"Price: {item['price']}")
-                    st.markdown(f"[View Product]({item['link']})")
-                    st.divider()
-
         else:
             st.error("Backend error. Please check FastAPI server.")
 
