@@ -1,15 +1,26 @@
+from unittest import result
+
 from fastapi import FastAPI
 from pydantic import BaseModel
 from catboost import CatBoostClassifier
 import pandas as pd
 import shap
+from scraper import scrape_amazon #Added for webscraping
 
 app = FastAPI()
 
 # -------- LOAD TRAINED MODEL --------
 model = CatBoostClassifier()
-model.load_model("models/catboost_purchase_model.cbm")
+# model.load_model("models/catboost_purchase_model.cbm")
 
+import os
+
+current_dir = os.path.dirname(__file__)
+model_path = os.path.abspath(
+    os.path.join(current_dir, "..", "models", "catboost_purchase_model.cbm")
+)
+
+model.load_model(model_path)
 
 # -------- REQUEST SCHEMA --------
 class PurchaseRequest(BaseModel):
@@ -106,9 +117,14 @@ def check_feasibility(data: PurchaseRequest):
         explanation.append(
             "This purchase would result in a negative remaining budget, which weakens financial stability."
         )
+        # Added code here 
+    best_deals = []
 
+    if result == "Feasible":
+        best_deals = scrape_amazon(input_dict["Product_Name"])
     # -------- FINAL RESPONSE --------
     return {
         "prediction": result,
-        "explanation": explanation
+        "explanation": explanation,
+        "best_deals": best_deals
     }

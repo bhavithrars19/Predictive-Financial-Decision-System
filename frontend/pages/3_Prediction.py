@@ -135,6 +135,16 @@ if st.button("Check Feasibility"):
             st.subheader("📌 AI Explanation")
             for line in result["explanation"]:
                 st.write("•", line)
+            
+            # Added code here -->
+            if result["prediction"] == "Feasible" and result.get("best_deals"):
+                st.subheader("💰 Best Budget-Friendly Deals")
+
+            for deal in result["best_deals"]:
+                st.markdown(f"**{deal['title']}**")
+                st.write(f"Price: {deal['price']}")
+                st.markdown(f"[View Product]({deal['link']})")
+                st.write("---")
 
         else:
             st.error("Backend error. Please check FastAPI server.")
